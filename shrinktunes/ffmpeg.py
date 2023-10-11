@@ -28,8 +28,11 @@ def get_ffmpeg_supported_formats() -> list[FFmpegFormat]:
         (?P<description>.*?)\s*$  # Description (non-greedy capture till end of line)
     """, re.VERBOSE)
 
+    lines = [line.rstrip() for line in output.splitlines() if line]
+    lines = lines[lines.index(" --") + 1:]
+
     formats = []
-    for line in output.split("\n"):
+    for line in lines:
         match = pattern.match(line)
         if match:
             d = match.groupdict()
@@ -38,7 +41,7 @@ def get_ffmpeg_supported_formats() -> list[FFmpegFormat]:
                     is_decoder=d["is_decoder"] == 'D',
                     is_encoder=d["is_encoder"] == 'E',
                     extension=ext,
-                    description=d["description"].strip()  # Remove potential trailing whitespace
+                    description=d["description"].strip()
                 ))
 
     return formats
@@ -59,20 +62,38 @@ COMMON_SUPPORTED_DECODE_FORMATS = filter_extensions(SUPPORTED_DECODE_FORMATS)
 COMMON_SUPPORTED_ENCODE_FORMATS = filter_extensions(SUPPORTED_ENCODE_FORMATS)
 
 
-def check_ffmpeg_installation():
+class FFMpegError(Exception):
+    pass
+
+
+def check_ffmpeg_installation(raises=False):
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
         return True
     except FileNotFoundError:
+        if raises:
+            raise FFMpegError("ffmpeg is not installed")
         return False
 
 
+def show_ffmpeg_install_message():
+    typer.echo(typer.style("ffmpeg is NOT installed", fg=typer.colors.RED))
+    # Recommend installation method based on the platform
+    os_type = platform.system()
+    match os_type:
+        case "Darwin":
+            typer.echo("For macOS:\n\n\tbrew install ffmpeg")
+        case "Linux":
+            typer.echo("For Ubuntu:\n\n\tsudo apt-get install ffmpeg")
+        case "Windows":
+            typer.echo("For Windows:\n\n\twinget install ffmpeg OR scoop install ffmpeg")
+        case _:
+            typer.echo(f"Please check the ffmpeg installation guide for {os_type}.")
+
+
 def print_ffmpeg_info(print_decoders=False, print_encoders=True, show_all=False):
-    if check_ffmpeg_installation():
-        typer.echo(typer.style("ffmpeg is installed", fg=typer.colors.GREEN))
-    else:
-        typer.echo(typer.style("ffmpeg is NOT installed", fg=typer.colors.RED))
-        raise SystemExit(1)
+    check_ffmpeg_installation(raises=True)
+    typer.echo(typer.style("ffmpeg is installed", fg=typer.colors.GREEN))
 
     ext_max_len = max(len(fmt.extension) for fmt in SUPPORTED_FORMATS)
     gap = 3

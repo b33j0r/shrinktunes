@@ -13,6 +13,13 @@ rich = "^13.6.0"
 [tool.poetry.scripts]
 shrinktunes = "shrinktunes.cli:cli_main"
 
+[tool.poetry.group.test.dependencies]
+pytest = "^7.4.2"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.9.1"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

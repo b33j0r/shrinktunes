@@ -3,10 +3,13 @@ import asyncio
 from pathlib import Path
 import subprocess
 from datetime import datetime
-import platform
 
-from shrinktunes.ffmpeg import get_ffmpeg_supported_formats, SUPPORTED_FORMATS, check_ffmpeg_installation, \
-    print_ffmpeg_info, SUPPORTED_FORMATS_BY_EXTENSION
+from shrinktunes.ffmpeg import (
+    check_ffmpeg_installation,
+    print_ffmpeg_info,
+    SUPPORTED_FORMATS_BY_EXTENSION,
+    show_ffmpeg_install_message,
+)
 
 app = typer.Typer()
 
@@ -20,9 +23,6 @@ def log(message, verbose):
 # Convert a single file to the desired format
 async def convert_file(input_path: Path, output_format: str, verbose: bool, force: bool):
     output_path = input_path.with_suffix(f".{output_format}")
-    if output_path.exists() and not force:
-        log(f"Skipping {output_path} as it already exists. Use -f to force overwrite.", verbose)
-        return False
     subprocess.run(["ffmpeg", "-i", str(input_path), str(output_path)], check=True)
     log(f"Converted {input_path} -> {output_path}", verbose)
     return True
@@ -35,15 +35,42 @@ async def convert_files(glob_pattern: str, output_formats: list[str], verbose: b
     log(f"Scanning glob {glob_pattern}", verbose)
     log(f"Found {len(paths)} files", verbose)
 
-    converted_count = 0
+    converted_paths = []
+    failed_paths = []
+    skipped_paths = []
+
     for output_format in output_formats:
         for path in paths:
-            if path.suffix == ".wav":
-                success = await convert_file(path, output_format, verbose, force)
-                if success:
-                    converted_count += 1
-        log(f"Converted {converted_count} files to {output_format}", verbose)
-    log(f"{converted_count} files converted, {len(paths) - converted_count} skipped.", verbose)
+            ext = path.suffix.removeprefix(".")
+            if ext not in SUPPORTED_FORMATS_BY_EXTENSION:
+                typer.echo(typer.style(f"Unsupported file format: {ext} ({path})", bold=True, fg=typer.colors.RED))
+                failed_paths.append(path)
+                continue
+
+            if not SUPPORTED_FORMATS_BY_EXTENSION[ext].is_encoder:
+                typer.echo(typer.style(
+                    f"ffmpeg does not support encoding {ext}", fg=typer.colors.RED
+                ))
+                failed_paths.append(path)
+                continue
+
+            if path.exists() and not force:
+                typer.echo(typer.style(
+                    f"Skipping {path} as it already exists. Use -f to force overwrite.",
+                    fg=typer.colors.YELLOW,
+                ))
+                skipped_paths.append(path)
+                continue
+
+            success = await convert_file(path, output_format, verbose, force)
+            if success:
+                converted_paths.append(path)
+            else:
+                failed_paths.append(path)
+
+    typer.echo(
+        f"{len(converted_paths)} files converted, {len(skipped_paths)} skipped, {len(failed_paths)} failed"
+    )
 
 
 @app.command()
@@ -57,19 +84,10 @@ def convert(
     """
     Convert .wav files matching the glob pattern to the specified format(s).
     """
-    if not check_ffmpeg_installation():
-        typer.echo("ffmpeg is not installed. Please install it first.")
-
-        # Recommend installation method based on the platform
-        os_type = platform.system()
-        if os_type == "Darwin":
-            typer.echo("For macOS: brew install ffmpeg")
-        elif os_type == "Linux":
-            typer.echo("For Ubuntu: sudo apt-get install ffmpeg")
-        elif os_type == "Windows":
-            typer.echo("For Windows: winget install ffmpeg OR scoop install ffmpeg")
-        else:
-            typer.echo(f"Please check the ffmpeg installation guide for {os_type}.")
+    try:
+        check_ffmpeg_installation(raises=True)
+    except FFMpegError:
+        show_ffmpeg_install_message()
         raise typer.Exit(code=1)
 
     # Check if the output format is supported
