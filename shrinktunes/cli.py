@@ -21,8 +21,7 @@ def log(message, verbose):
 
 
 # Convert a single file to the desired format
-async def convert_file(input_path: Path, output_format: str, verbose: bool, force: bool):
-    output_path = input_path.with_suffix(f".{output_format}")
+async def convert_file(input_path: Path, output_path: Path, verbose: bool, force: bool):
     subprocess.run(["ffmpeg", "-i", str(input_path), str(output_path)], check=True)
     log(f"Converted {input_path} -> {output_path}", verbose)
     return True
@@ -54,15 +53,17 @@ async def convert_files(glob_pattern: str, output_formats: list[str], verbose: b
                 failed_paths.append(path)
                 continue
 
-            if path.exists() and not force:
+            output_path = path.with_suffix(f".{output_format}")
+
+            if output_path.exists() and not force:
                 typer.echo(typer.style(
-                    f"Skipping {path} as it already exists. Use -f to force overwrite.",
+                    f"Skipping {output_path} as it already exists. Use -f to force overwrite.",
                     fg=typer.colors.YELLOW,
                 ))
                 skipped_paths.append(path)
                 continue
 
-            success = await convert_file(path, output_format, verbose, force)
+            success = await convert_file(path, output_path, verbose, force)
             if success:
                 converted_paths.append(path)
             else:
