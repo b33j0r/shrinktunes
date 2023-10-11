@@ -1,9 +1,7 @@
 # .github/workflows/publish.yml
 
 on:
-  push:
-    tags:
-      - '*'
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
